@@ -1,26 +1,24 @@
 from pyrogram.types import InlineKeyboardButton
+
 import config
+from config import SUPPORT_GROUP
 from VIPMUSIC import app
 
-def start_panel(_):
+
+def start_pannel(_):
     buttons = [
         [
             InlineKeyboardButton(
-                text="➕ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ➕", 
-                url=f"https://t.me/{app.username}?startgroup=true"
+                text="💠 𝐀𝙳𝙳 𝙼𝙴 𝙸𝙽 𝙽𝙴𝚆 𝙶𝚁𝙾𝚄𝙿𝚂 💠",
+                url=f"https://t.me/{app.username}?startgroup=true",
             ),
         ],
         [
-            InlineKeyboardButton(text="ʜᴇʟᴘ", callback_data="settings_back_helper"),
-            InlineKeyboardButton(text="sᴇᴛᴛɪɴɢs", callback_data="settings_helper"),
+            InlineKeyboardButton(text="۞ 𝐇𝙴𝙻𝙿 ۞", callback_data="settings_back_helper"),
+            InlineKeyboardButton(text="☢ 𝐒𝙴𝚃 ☢", callback_data="settings_helper"),
         ],
         [
-            InlineKeyboardButton(text="sᴜᴘᴘᴏʀᴛ", url=config.SUPPORT_CHAT),
-            InlineKeyboardButton(text="ᴄʜᴀɴɴᴇʟ", url=config.SUPPORT_CHANNEL),
-        ],
-        [
-            # Ye button direct aapki ID se aapki profile kholega
-            InlineKeyboardButton(text="ᴏᴡɴᴇʀ", url=f"tg://openmessage?user_id={config.OWNER_ID[0]}"),
+            InlineKeyboardButton(text="✡ 𝐆𝚁𝙾𝚄𝙿 ✡", url=config.SUPPORT_GROUP),
         ],
     ]
     return buttons
@@ -30,20 +28,22 @@ def private_panel(_):
     buttons = [
         [
             InlineKeyboardButton(
-                text="➕ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ➕",
+                text="💠 𝐀𝙳𝙳 𝙼𝙴 𝙸𝙽 𝙽𝙴𝚆 𝙶𝚁𝙾𝚄𝙿𝚂 💠",
                 url=f"https://t.me/{app.username}?startgroup=true",
             )
         ],
         [
-            InlineKeyboardButton(text="sᴜᴘᴘᴏʀᴛ", url=config.SUPPORT_CHAT),
-            InlineKeyboardButton(text="ᴄʜᴀɴɴᴇʟ", url=config.SUPPORT_CHANNEL),
+            InlineKeyboardButton(text="𝐆𝚁𝙾𝚄𝙿✨", url=config.SUPPORT_GROUP),
+            InlineKeyboardButton(text="𝐌ᴏʀᴇ🥀", url=config.SUPPORT_CHANNEL),
         ],
         [
-            InlineKeyboardButton(text="ꜰᴇᴀᴛᴜʀᴇs", callback_data="settings_back_helper"),
-            InlineKeyboardButton(text="ᴏᴡɴᴇʀ", url=f"tg://openmessage?user_id={config.OWNER_ID[0]}"),
+            InlineKeyboardButton(
+                text="۞ 𝐅𝙴𝙰𝚃𝚄𝚁𝙴𝚂 ۞", callback_data="settings_back_helper"
+            )
         ],
     ]
     return buttons
+
 
 def alive_panel(_):
     buttons = [
