@@ -1,19 +1,26 @@
 from pyrogram.types import InlineKeyboardButton
-
 import config
 from VIPMUSIC import app
-
 
 def start_panel(_):
     buttons = [
         [
             InlineKeyboardButton(
-                text=_["S_B_1"], url=f"https://t.me/{app.username}?startgroup=true"
-            )],
+                text="➕ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ➕", 
+                url=f"https://t.me/{app.username}?startgroup=true"
+            ),
+        ],
         [
-      InlineKeyboardButton(text=_["S_B_2"], url=config.SUPPORT_CHAT),
-
-InlineKeyboardButton(text=_["S_B_5"], url=config.SUPPORT_CHANNEL),
+            InlineKeyboardButton(text="ʜᴇʟᴘ", callback_data="settings_back_helper"),
+            InlineKeyboardButton(text="sᴇᴛᴛɪɴɢs", callback_data="settings_helper"),
+        ],
+        [
+            InlineKeyboardButton(text="sᴜᴘᴘᴏʀᴛ", url=config.SUPPORT_CHAT),
+            InlineKeyboardButton(text="ᴄʜᴀɴɴᴇʟ", url=config.SUPPORT_CHANNEL),
+        ],
+        [
+            # Ye button direct aapki ID se aapki profile kholega
+            InlineKeyboardButton(text="ᴏᴡɴᴇʀ", url=f"tg://openmessage?user_id={config.OWNER_ID[0]}"),
         ],
     ]
     return buttons
@@ -23,16 +30,17 @@ def private_panel(_):
     buttons = [
         [
             InlineKeyboardButton(
-                text=_["S_B_3"],
+                text="➕ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ➕",
                 url=f"https://t.me/{app.username}?startgroup=true",
             )
         ],
         [
-            InlineKeyboardButton(text=_["S_B_6"], user_id=config.OWNER_ID),
-            InlineKeyboardButton(text=_["S_B_5"], url=config.SUPPORT_CHANNEL),
+            InlineKeyboardButton(text="sᴜᴘᴘᴏʀᴛ", url=config.SUPPORT_CHAT),
+            InlineKeyboardButton(text="ᴄʜᴀɴɴᴇʟ", url=config.SUPPORT_CHANNEL),
         ],
-[InlineKeyboardButton(text=_["S_B_4"], callback_data="settings_back_helper")],
-    
+        [
+            InlineKeyboardButton(text="ꜰᴇᴀᴛᴜʀᴇs", callback_data="settings_back_helper"),
+            InlineKeyboardButton(text="ᴏᴡɴᴇʀ", url=f"tg://openmessage?user_id={config.OWNER_ID[0]}"),
+        ],
     ]
-    
     return buttons
