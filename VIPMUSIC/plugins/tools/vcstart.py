@@ -11,8 +11,8 @@ from pyrogram.types import ChatPrivileges, Message
 from VIPMUSIC import app
 from VIPMUSIC.utils.database import *
 
-other_filters = filters.group & ~filters.via_rbot & ~filters.forwarded
-other_filters2 = filters.private & ~filters.via_rbot & ~filters.forwarded
+other_filters = filters.group & ~filters.via_bot & ~filters.forwarded
+other_filters2 = filters.private & ~filters.via_bot & ~filters.forwarded
 
 
 def command(commands: Union[str, List[str]]):
@@ -36,7 +36,7 @@ async def get_group_call(
             ).full_chat
         if full_chat is not None:
             return full_chat.call
-    await app.send_message(f"No group ᴠᴏɪᴄᴇ ᴄʜᴀᴛ Found** {err_msg}")
+    await app.send_message(message.chat.id, f"**No group ᴠᴏɪᴄᴇ ᴄʜᴀᴛ Found** {err_msg}")
     return False
 
 
@@ -44,11 +44,11 @@ async def get_group_call(
 async def start_group_call(c: Client, m: Message):
     chat_id = m.chat.id
     assistant = await get_assistant(chat_id)
-    ass = await assistant.get_me()
-    assid = ass.id
     if assistant is None:
         await app.send_message(chat_id, "ᴇʀʀᴏʀ ᴡɪᴛʜ ᴀꜱꜱɪꜱᴛᴀɴᴛ")
         return
+    ass = await assistant.get_me()
+    assid = ass.id
     msg = await app.send_message(chat_id, "ꜱᴛᴀʀᴛɪɴɢ ᴛʜᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ..")
     try:
         peer = await assistant.resolve_peer(chat_id)
@@ -103,7 +103,8 @@ async def start_group_call(c: Client, m: Message):
                 ),
             )
             await msg.edit_text("ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ꜱᴛᴀʀᴛᴇᴅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ⚡️~!")
-        except:
+        except Exception as e:
+            print(f"Error in start_group_call: {e}")
             await msg.edit_text("ɢɪᴠᴇ ᴛʜᴇ ʙᴏᴛ ᴀʟʟ ᴘᴇʀᴍɪꜱꜱɪᴏɴꜱ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ ⚡")
 
 
@@ -111,11 +112,11 @@ async def start_group_call(c: Client, m: Message):
 async def stop_group_call(c: Client, m: Message):
     chat_id = m.chat.id
     assistant = await get_assistant(chat_id)
-    ass = await assistant.get_me()
-    assid = ass.id
     if assistant is None:
         await app.send_message(chat_id, "ᴇʀʀᴏʀ ᴡɪᴛʜ ᴀꜱꜱɪꜱᴛᴀɴᴛ")
         return
+    ass = await assistant.get_me()
+    assid = ass.id
     msg = await app.send_message(chat_id, "ᴄʟᴏꜱɪɴɢ ᴛʜᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ..")
     try:
         if not (
@@ -169,5 +170,9 @@ async def stop_group_call(c: Client, m: Message):
                     ),
                 )
                 await msg.edit_text("ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ᴄʟᴏꜱᴇᴅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ⚡️~!")
-            except:
+            except Exception as e:
+                print(f"Error in stop_group_call: {e}")
                 await msg.edit_text("ɢɪᴠᴇ ᴛʜᴇ ʙᴏᴛ ᴀʟʟ ᴘᴇʀᴍɪꜱꜱɪᴏɴꜱ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ")
+        else:
+            print(f"Unhandled error in stop_group_call: {e}")
+            await msg.edit_text("ꜱᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ ⚡")
