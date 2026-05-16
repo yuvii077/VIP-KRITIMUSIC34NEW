@@ -26,7 +26,7 @@ class SensitiveDataFilter(logging.Filter):
 
 logging.getLogger().addFilter(SensitiveDataFilter())
 
-API_URL = "https://shrutibots.site"
+API_URL = ""
 
 # --- AUTOMATIC COOKIE MANAGER ---
 def get_ydl_opts(fmt: str) -> dict:
