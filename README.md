@@ -1,4 +1,3 @@
-
 <div align="center">
 
 ![divider](https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif)
@@ -25,7 +24,7 @@
 
 **VISITORS**
 
-![Visitor Count](https://profile-counter.glitch.me/NOBITA-BOT-MAKER/count.svg)
+![Visitor Count](https://komarev.com/ghpvc/?username=KIRU-OP&label=Visitors&color=brightgreen&style=for-the-badge)
 
 ![divider](https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif)
 
