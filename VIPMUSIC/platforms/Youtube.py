@@ -2,14 +2,16 @@ import asyncio
 import re
 import logging
 import aiohttp
+import yt_dlp
 from typing import Union, Optional, Tuple, List
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch
-from VIPMUSIC import LOGGER
+from RishuMusic.utils.formatters import time_to_seconds
+from RishuMusic import LOGGER
 
 # --- CONFIGURATION ---
-from config import YOUTUBE_IMG_URL
+from config import API_ID, BOT_TOKEN, MONGO_DB_URI, YOUTUBE_IMG_URL
 
 # --- SECURITY FILTER ---
 class SensitiveDataFilter(logging.Filter):
@@ -23,32 +25,9 @@ class SensitiveDataFilter(logging.Filter):
 
 logging.getLogger().addFilter(SensitiveDataFilter())
 
-# ─── VIP-MUSIC API ────────────────────────────────────────────────────────────
-API_BASE = "https://youtube-mini.up.railway.app"
+API_URL = "https://youtube-mini.up.railway.app"
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "application/json",
-}
-
-# ─── Duration Parser ──────────────────────────────────────────────────────────
-def parse_duration(duration_str) -> Tuple[str, int]:
-    if not duration_str:
-        return "00:00", 0
-    try:
-        parts = [int(p) for p in str(duration_str).strip().split(":")]
-        if len(parts) == 1:
-            secs = parts[0]
-        elif len(parts) == 2:
-            secs = parts[0] * 60 + parts[1]
-        else:
-            secs = parts[0] * 3600 + parts[1] * 60 + parts[2]
-        return f"{secs // 60:02d}:{secs % 60:02d}", secs
-    except Exception:
-        return "00:00", 0
-
-
-# ─── UTILS ───────────────────────────────────────────────────────────────────
+# --- UTILS ---
 def get_clean_id(link: str) -> Optional[str]:
     if "v=" in link:
         video_id = link.split('v=')[-1].split('&')[0]
@@ -60,43 +39,99 @@ def get_clean_id(link: str) -> Optional[str]:
     return clean_id if 5 <= len(clean_id) <= 15 else None
 
 
-async def api_get(endpoint: str, params: dict = {}) -> Optional[dict]:
-    url = f"{API_BASE}/{endpoint}"
+def extract_url_from_info(info: dict, prefer_video: bool = False) -> Optional[str]:
+    """Extracts the best playable stream URL from yt-dlp info dict."""
     try:
-        timeout = aiohttp.ClientTimeout(total=20)
-        async with aiohttp.ClientSession(headers=HEADERS, timeout=timeout) as session:
-            async with session.get(url, params=params) as resp:
-                text = await resp.text()
-                LOGGER(__name__).debug(f"[API] {url} | status={resp.status} | response={text[:300]}")
-                if resp.status == 200:
-                    import json
-                    return json.loads(text)
+        # 1. Check direct URL
+        if info.get("url"):
+            return info["url"]
+
+        # 2. Check requested formats
+        requested = info.get("requested_formats")
+        if requested:
+            if not prefer_video:
+                # Sirf audio chahiye
+                for fmt in requested:
+                    if fmt.get("acodec") != "none" and fmt.get("vcodec") == "none" and fmt.get("url"):
+                        return fmt["url"]
+                # Agar pure audio na mile toh koi bhi audio wala
+                for fmt in requested:
+                    if fmt.get("acodec") != "none" and fmt.get("url"):
+                        return fmt["url"]
+            else:
+                # Video chahiye
+                for fmt in requested:
+                    if fmt.get("vcodec") != "none" and fmt.get("url"):
+                        return fmt["url"]
+
+        # 3. Fallback: formats list se
+        formats = info.get("formats", [])
+        if not prefer_video:
+            # Pure audio formats (no video)
+            audio_formats = [
+                f for f in formats
+                if f.get("acodec") != "none"
+                and f.get("vcodec") == "none"
+                and f.get("url")
+            ]
+            if audio_formats:
+                # Sabse best audio (last = highest quality)
+                return audio_formats[-1]["url"]
+
+            # Pure audio na mile toh audio+video mein se audio wala
+            mixed = [
+                f for f in formats
+                if f.get("acodec") != "none" and f.get("url")
+            ]
+            if mixed:
+                return mixed[-1]["url"]
+        else:
+            # Video formats
+            video_formats = [
+                f for f in formats
+                if f.get("vcodec") != "none" and f.get("url")
+            ]
+            if video_formats:
+                return video_formats[-1]["url"]
+
+        # Last resort
+        if formats and formats[-1].get("url"):
+            return formats[-1]["url"]
+
     except Exception as e:
-        LOGGER(__name__).error(f"[API ERROR] {endpoint}: {e}")
+        LOGGER.error(f"Extraction error: {e}")
     return None
 
 
-async def get_stream_url(video_id: str) -> Optional[str]:
-    data = await api_get("api/yt/stream", {"id": video_id})
-    if data and data.get("stream"):
-        return data["stream"]
+async def get_direct_stream_link(link: str, media_type: str) -> Optional[str]:
+    video_id = get_clean_id(link)
+    if not video_id:
+        return None
+    try:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=timeout
+        ) as session:
+            async with session.get(
+                f"{API_URL}/download",
+                params={"url": video_id, "type": media_type}
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    token = data.get("download_token")
+                    if token:
+                        return f"{API_URL}/stream/{video_id}?type={media_type}&token={token}"
+    except Exception:
+        pass
     return None
 
 
-async def search_api(query: str, limit: int = 1) -> List[dict]:
-    data = await api_get("api/yt/search", {"q": query, "max": limit})
-    if data and isinstance(data.get("results"), list):
-        return data["results"]
-    return []
-
-
-# ─── YouTubeAPI Class ─────────────────────────────────────────────────────────
 class YouTubeAPI:
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
         self.regex = r"(?:youtube\.com|youtu\.be)"
 
-    async def exists(self, link: str) -> bool:
+    async def exists(self, link: str):
         return bool(re.search(self.regex, link))
 
     async def url(self, message: Message) -> Optional[str]:
@@ -116,73 +151,65 @@ class YouTubeAPI:
                 return urls[0]
         return None
 
-    async def details(self, query: str, videoid: Union[bool, str] = None) -> Optional[Tuple]:
-        LOGGER(__name__).debug(f"[DETAILS] query={query} videoid={videoid}")
-        video_id = None
-
-        if videoid:
-            video_id = get_clean_id(query) or query
-        elif await self.exists(query):
-            video_id = get_clean_id(query)
-
-        LOGGER(__name__).debug(f"[DETAILS] video_id={video_id}")
-
-        # Direct video ID
-        if video_id:
-            stream_data = await api_get("api/yt/stream", {"id": video_id})
-            LOGGER(__name__).debug(f"[DETAILS] stream_data={stream_data}")
-            if stream_data and stream_data.get("stream"):
-                title = stream_data.get("title") or "Unknown Title"
-                thumb = stream_data.get("thumb") or YOUTUBE_IMG_URL
-                search_res = await search_api(title, limit=1)
-                duration_str, duration_sec = "00:00", 0
-                if search_res:
-                    duration_str, duration_sec = parse_duration(search_res[0].get("duration"))
-                return title, duration_str, duration_sec, thumb, video_id
-
-        # Text search
-        LOGGER(__name__).debug(f"[DETAILS] Trying search for: {query}")
-        results = await search_api(query, limit=1)
-        LOGGER(__name__).debug(f"[DETAILS] search results={results}")
-
-        if results:
-            v = results[0]
-            vid_id = v.get("id", "")
-            title = v.get("title", "Unknown Title")
-            thumb = v.get("thumb") or YOUTUBE_IMG_URL
-            dur_str, dur_sec = parse_duration(v.get("duration", "0:00"))
-            LOGGER(__name__).debug(f"[DETAILS] Found: {title} | {vid_id} | {dur_str}")
-            return title, dur_str, dur_sec, thumb, vid_id
-
-        # Last fallback
-        LOGGER(__name__).debug(f"[DETAILS] Trying youtubesearchpython fallback")
+    async def search(self, query: str, limit: int = 1):
         try:
-            search = VideosSearch(query, limit=1)
+            search = VideosSearch(query, limit=limit)
             resp = await search.next()
-            res = resp.get("result", [])
-            if res:
-                v = res[0]
-                thumb = (v.get("thumbnails") or [{}])[0].get("url", YOUTUBE_IMG_URL).split("?")[0]
-                dur_str, dur_sec = parse_duration(v.get("duration", "0:00"))
-                LOGGER(__name__).debug(f"[DETAILS] Fallback found: {v.get('title')} | {v.get('id')}")
-                return v.get("title", "Unknown"), dur_str, dur_sec, thumb, v.get("id", "")
+            return resp.get("result", [])
         except Exception as e:
-            LOGGER(__name__).error(f"[DETAILS] Fallback error: {e}")
+            LOGGER.error(f"Search Error: {e}")
+            return []
 
-        LOGGER(__name__).warning("[DETAILS] All methods failed!")
-        return None
+    async def details(self, query: str, videoid: Union[bool, str] = None):
+        if videoid:
+            link = self.base + query if not query.startswith("http") else query
+        else:
+            link = query
+
+        try:
+            if await self.exists(link):
+                ydl_opts = {"quiet": True, "no_warnings": True}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = await asyncio.to_thread(ydl.extract_info, link, download=False)
+                    title = info.get("title", "Unknown Title")
+                    duration_sec = info.get("duration", 0)
+                    duration_min = f"{duration_sec // 60:02d}:{duration_sec % 60:02d}"
+                    thumbnail = info.get("thumbnail") or YOUTUBE_IMG_URL
+                    vidid = info.get("id")
+                    return title, duration_min, duration_sec, thumbnail, vidid
+
+            res = await self.search(link, limit=1)
+            if not res:
+                return None
+
+            video = res[0]
+            thumbnail = (
+                video.get("thumbnails")[0]["url"].split("?")[0]
+                if video.get("thumbnails")
+                else YOUTUBE_IMG_URL
+            )
+            return (
+                video.get("title", "Unknown Title"),
+                video.get("duration", "00:00"),
+                int(time_to_seconds(video.get("duration", "00:00"))),
+                thumbnail,
+                video.get("id"),
+            )
+        except Exception as e:
+            LOGGER.error(f"Details Error: {e}")
+            return None
 
     async def track(self, query: str, videoid: Union[bool, str] = None):
         det = await self.details(query, videoid)
         if not det:
             return None, None
         track_details = {
-            "title":        det[0],
-            "link":         self.base + det[4],
-            "vidid":        det[4],
+            "title": det[0],
+            "link": self.base + det[4],
+            "vidid": det[4],
             "duration_min": det[1],
             "duration_sec": det[2],
-            "thumb":        det[3],
+            "thumb": det[3],
         }
         return track_details, det[4]
 
@@ -194,25 +221,60 @@ class YouTubeAPI:
         videoid: Union[bool, str] = None,
         **kwargs,
     ) -> Tuple[Optional[str], bool]:
-        """
-        Koi file download nahi hoti.
-        Seedha stream URL return karta hai — direct play ke liye.
-        Returns: (stream_url, True) on success, (None, False) on failure.
-        """
-        video_id = get_clean_id(link) if not videoid else (get_clean_id(link) or link)
 
-        if not video_id:
-            LOGGER(__name__).warning(f"[STREAM] Invalid video ID: {link}")
-            return None, False
+        if videoid:
+            link = self.base + link
 
-        LOGGER(__name__).info(f"[STREAM] Fetching direct stream URL: {video_id}")
-        stream_url = await get_stream_url(video_id)
+        # /play = audio only | /vplay = video
+        is_video = bool(video)
+        m_type = "video" if is_video else "audio"
 
-        if stream_url:
-            LOGGER(__name__).info(f"[STREAM] Stream URL ready: {video_id}")
-            return stream_url, True
+        LOGGER.info(f"[DOWNLOAD] type={m_type} | link={link}")
 
-        LOGGER(__name__).warning(f"[STREAM] Stream URL not found: {video_id}")
+        # 1. Pehle Railway API try karo
+        stream_link = await get_direct_stream_link(link, m_type)
+        if stream_link:
+            LOGGER.info(f"[DOWNLOAD] API stream mil gaya: {stream_link[:60]}")
+            return stream_link, True
+
+        # 2. yt-dlp fallback
+        try:
+            if is_video:
+                fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+            else:
+                # AUDIO ONLY format - video nahi chahiye
+                fmt = "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best"
+
+            ydl_opts = {
+                "format": fmt,
+                "quiet": True,
+                "no_warnings": True,
+                "geo_bypass": True,
+                "nocheckcertificate": True,
+                "noplaylist": True,
+                "headers": {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "Referer": "https://www.google.com/",
+                },
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = await asyncio.to_thread(ydl.extract_info, link, download=False)
+                if not info:
+                    return None, False
+
+            url = extract_url_from_info(info, prefer_video=is_video)
+
+            if url and len(url) > 10:
+                LOGGER.info(f"[DOWNLOAD] yt-dlp stream OK | type={m_type}")
+                return url, True
+
+        except Exception as e:
+            LOGGER.error(f"[DOWNLOAD] yt-dlp error: {e}")
+
+        LOGGER.error(f"[DOWNLOAD] Sab fail ho gaya: {link}")
         return None, False
 
 
