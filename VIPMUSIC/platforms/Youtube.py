@@ -67,35 +67,19 @@ async def api_get(endpoint: str, params: dict = {}) -> Optional[dict]:
         async with aiohttp.ClientSession(headers=HEADERS, timeout=timeout) as session:
             async with session.get(url, params=params) as resp:
                 text = await resp.text()
-                print(f"[API] {url} | status={resp.status} | response={text[:300]}")
+                LOGGER(__name__).debug(f"[API] {url} | status={resp.status} | response={text[:300]}")
                 if resp.status == 200:
                     import json
                     return json.loads(text)
     except Exception as e:
-        print(f"[API ERROR] {endpoint}: {e}")
+        LOGGER(__name__).error(f"[API ERROR] {endpoint}: {e}")
     return None
 
 
-# ─── Stream URL Fetcher ───────────────────────────────────────────────────────
-async def get_stream_url(video_id: str, audio_only: bool = True) -> Optional[str]:
-    """
-    Fetch stream URL from API.
-    audio_only=True  → sends type=audio  (for music bots)
-    audio_only=False → sends type=video  (for video playback)
-    """
-    params = {"id": video_id, "type": "audio" if audio_only else "video"}
-    data = await api_get("api/yt/stream", params)
-
-    if not data:
-        return None
-
-    # Try common response keys
-    for key in ("stream", "audio", "url", "link"):
-        if data.get(key):
-            print(f"[STREAM] Got URL via key='{key}' for {video_id}")
-            return data[key]
-
-    print(f"[STREAM] No usable key in response: {data}")
+async def get_stream_url(video_id: str) -> Optional[str]:
+    data = await api_get("api/yt/stream", {"id": video_id})
+    if data and data.get("stream"):
+        return data["stream"]
     return None
 
 
@@ -133,7 +117,7 @@ class YouTubeAPI:
         return None
 
     async def details(self, query: str, videoid: Union[bool, str] = None) -> Optional[Tuple]:
-        print(f"[DETAILS] query={query} videoid={videoid}")
+        LOGGER(__name__).debug(f"[DETAILS] query={query} videoid={videoid}")
         video_id = None
 
         if videoid:
@@ -141,13 +125,13 @@ class YouTubeAPI:
         elif await self.exists(query):
             video_id = get_clean_id(query)
 
-        print(f"[DETAILS] video_id={video_id}")
+        LOGGER(__name__).debug(f"[DETAILS] video_id={video_id}")
 
-        # Direct video ID path
+        # Direct video ID
         if video_id:
-            stream_data = await api_get("api/yt/stream", {"id": video_id, "type": "audio"})
-            print(f"[DETAILS] stream_data={stream_data}")
-            if stream_data and any(stream_data.get(k) for k in ("stream", "audio", "url", "link")):
+            stream_data = await api_get("api/yt/stream", {"id": video_id})
+            LOGGER(__name__).debug(f"[DETAILS] stream_data={stream_data}")
+            if stream_data and stream_data.get("stream"):
                 title = stream_data.get("title") or "Unknown Title"
                 thumb = stream_data.get("thumb") or YOUTUBE_IMG_URL
                 search_res = await search_api(title, limit=1)
@@ -156,10 +140,10 @@ class YouTubeAPI:
                     duration_str, duration_sec = parse_duration(search_res[0].get("duration"))
                 return title, duration_str, duration_sec, thumb, video_id
 
-        # Text search path
-        print(f"[DETAILS] Trying search for: {query}")
+        # Text search
+        LOGGER(__name__).debug(f"[DETAILS] Trying search for: {query}")
         results = await search_api(query, limit=1)
-        print(f"[DETAILS] search results={results}")
+        LOGGER(__name__).debug(f"[DETAILS] search results={results}")
 
         if results:
             v = results[0]
@@ -167,11 +151,11 @@ class YouTubeAPI:
             title = v.get("title", "Unknown Title")
             thumb = v.get("thumb") or YOUTUBE_IMG_URL
             dur_str, dur_sec = parse_duration(v.get("duration", "0:00"))
-            print(f"[DETAILS] Found: {title} | {vid_id} | {dur_str}")
+            LOGGER(__name__).debug(f"[DETAILS] Found: {title} | {vid_id} | {dur_str}")
             return title, dur_str, dur_sec, thumb, vid_id
 
-        # Fallback: youtubesearchpython
-        print(f"[DETAILS] Trying youtubesearchpython fallback")
+        # Last fallback
+        LOGGER(__name__).debug(f"[DETAILS] Trying youtubesearchpython fallback")
         try:
             search = VideosSearch(query, limit=1)
             resp = await search.next()
@@ -180,12 +164,12 @@ class YouTubeAPI:
                 v = res[0]
                 thumb = (v.get("thumbnails") or [{}])[0].get("url", YOUTUBE_IMG_URL).split("?")[0]
                 dur_str, dur_sec = parse_duration(v.get("duration", "0:00"))
-                print(f"[DETAILS] Fallback found: {v.get('title')} | {v.get('id')}")
+                LOGGER(__name__).debug(f"[DETAILS] Fallback found: {v.get('title')} | {v.get('id')}")
                 return v.get("title", "Unknown"), dur_str, dur_sec, thumb, v.get("id", "")
         except Exception as e:
-            print(f"[DETAILS] Fallback error: {e}")
+            LOGGER(__name__).error(f"[DETAILS] Fallback error: {e}")
 
-        print("[DETAILS] All methods failed!")
+        LOGGER(__name__).warning("[DETAILS] All methods failed!")
         return None
 
     async def track(self, query: str, videoid: Union[bool, str] = None):
@@ -211,30 +195,24 @@ class YouTubeAPI:
         **kwargs,
     ) -> Tuple[Optional[str], bool]:
         """
-        Returns (stream_url, is_direct_stream)
-        video=True  → fetch video stream
-        video=False / None → fetch audio-only stream (default for music bots)
+        Koi file download nahi hoti.
+        Seedha stream URL return karta hai — direct play ke liye.
+        Returns: (stream_url, True) on success, (None, False) on failure.
         """
-        if videoid:
-            video_id = get_clean_id(link) or link
-        else:
-            video_id = get_clean_id(link)
+        video_id = get_clean_id(link) if not videoid else (get_clean_id(link) or link)
 
         if not video_id:
-            print(f"[DOWNLOAD] Invalid video ID: {link}")
+            LOGGER(__name__).warning(f"[STREAM] Invalid video ID: {link}")
             return None, False
 
-        # Determine stream type
-        audio_only = not video  # music bot default = audio only
-
-        print(f"[DOWNLOAD] Fetching {'video' if video else 'audio'} stream: {video_id}")
-        stream_url = await get_stream_url(video_id, audio_only=audio_only)
+        LOGGER(__name__).info(f"[STREAM] Fetching direct stream URL: {video_id}")
+        stream_url = await get_stream_url(video_id)
 
         if stream_url:
-            print(f"[DOWNLOAD] Stream OK: {video_id}")
+            LOGGER(__name__).info(f"[STREAM] Stream URL ready: {video_id}")
             return stream_url, True
 
-        print(f"[DOWNLOAD] Failed to get stream: {video_id}")
+        LOGGER(__name__).warning(f"[STREAM] Stream URL not found: {video_id}")
         return None, False
 
 
