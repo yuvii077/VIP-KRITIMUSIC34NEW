@@ -83,7 +83,9 @@ async def stream(
             else:
                 if not forceplay:
                     db[chat_id] = []
-                status = True if video else None
+                # ── AUDIO-ONLY LOCK ──────────────────────────────────────
+                # Playlist mein bhi YouTube audio hi stream hoga
+                status = None
                 try:
                     file_path, direct = await YouTube.download(
                         vidid, mystic, video=status, videoid=True
@@ -100,7 +102,7 @@ async def stream(
                     )
 
                 await VIP.join_call(
-                    chat_id, original_chat_id, file_path, video=status, image=thumbnail
+                    chat_id, original_chat_id, file_path, video=None, image=thumbnail
                 )
                 await put_queue(
                     chat_id,
@@ -152,7 +154,10 @@ async def stream(
         title = (result["title"]).title()
         duration_min = result["duration_min"]
         thumbnail = result["thumb"]
-        status = True if video else None
+        # ── AUDIO-ONLY LOCK ──────────────────────────────────────────────────
+        # YouTube ke liye hamesha audio — video=None force
+        status = None
+        video = None
         try:
             file_path, direct = await YouTube.download(
                 vidid, mystic, videoid=True, video=status
