@@ -7,8 +7,8 @@ from typing import Union, Optional, Tuple, List
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch
-from RishuMusic.utils.formatters import time_to_seconds
-from RishuMusic import LOGGER
+from VIPMUSIC.utils.formatters import time_to_seconds
+from VIPMUSIC import LOGGER
 
 # --- CONFIGURATION ---
 from config import API_ID, BOT_TOKEN, MONGO_DB_URI, YOUTUBE_IMG_URL
