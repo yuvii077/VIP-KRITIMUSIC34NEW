@@ -219,10 +219,14 @@ class Call(PyTgCalls):
                     link,
                     image,
                     audio_parameters=audio_stream_quality,
-                    video_parameters=video_stream_quality,
+                    video_flags=MediaStream.IGNORE,
                 )
             else:
-                stream = MediaStream(link, audio_parameters=audio_stream_quality)
+                stream = MediaStream(
+                    link,
+                    audio_parameters=audio_stream_quality,
+                    video_flags=MediaStream.IGNORE,
+                )
         await assistant.change_stream(
             chat_id,
             stream,
@@ -398,28 +402,28 @@ class Call(PyTgCalls):
         audio_stream_quality = await get_audio_bitrate(chat_id)
         video_stream_quality = await get_video_bitrate(chat_id)
         if video:
+            # Sirf Telegram video file ke liye video stream
             stream = MediaStream(
                 link,
                 audio_parameters=audio_stream_quality,
                 video_parameters=video_stream_quality,
             )
         else:
+            # YouTube / Spotify / baaki sab → hamesha audio-only
+            # PRIVATE_BOT_MODE mein image thumbnail dikhni chahiye
+            # lekin video_parameters bilkul nahi — warna video stream hoga
             if image and config.PRIVATE_BOT_MODE == str(True):
                 stream = MediaStream(
                     link,
                     image,
                     audio_parameters=audio_stream_quality,
-                    video_parameters=video_stream_quality,
+                    video_flags=MediaStream.IGNORE,
                 )
             else:
-                stream = (
-                    MediaStream(
-                        link,
-                        audio_parameters=audio_stream_quality,
-                        video_parameters=video_stream_quality,
-                    )
-                    if video
-                    else MediaStream(link, audio_parameters=audio_stream_quality)
+                stream = MediaStream(
+                    link,
+                    audio_parameters=audio_stream_quality,
+                    video_flags=MediaStream.IGNORE,
                 )
         try:
             await assistant.join_group_call(
@@ -517,28 +521,24 @@ class Call(PyTgCalls):
                         original_chat_id,
                         text=_["call_7"],
                     )
-                if video:
+                # Live stream bhi audio-only
+                try:
+                    image = await YouTube.thumbnail(videoid, True)
+                except:
+                    image = None
+                if image and config.PRIVATE_BOT_MODE == str(True):
+                    stream = MediaStream(
+                        link,
+                        image,
+                        audio_parameters=audio_stream_quality,
+                        video_flags=MediaStream.IGNORE,
+                    )
+                else:
                     stream = MediaStream(
                         link,
                         audio_parameters=audio_stream_quality,
-                        video_parameters=video_stream_quality,
+                        video_flags=MediaStream.IGNORE,
                     )
-                else:
-                    try:
-                        image = await YouTube.thumbnail(videoid, True)
-                    except:
-                        image = None
-                    if image and config.PRIVATE_BOT_MODE == str(True):
-                        stream = MediaStream(
-                            link,
-                            image,
-                            audio_parameters=audio_stream_quality,
-                            video_parameters=video_stream_quality,
-                        )
-                    else:
-                        stream = MediaStream(
-                            link,
-                            audio_parameters=audio_stream_quality,
                         )
                 try:
                     await client.change_stream(chat_id, stream)
@@ -569,34 +569,30 @@ class Call(PyTgCalls):
                         videoid,
                         mystic,
                         videoid=True,
-                        video=True if str(streamtype) == "video" else False,
+                        video=False,  # ── AUDIO-ONLY: YouTube queue mein hamesha audio
                     )
                 except:
                     return await mystic.edit_text(
                         _["call_7"], disable_web_page_preview=True
                     )
-                if video:
+                # Audio-only stream — video_parameters bilkul nahi
+                try:
+                    image = await YouTube.thumbnail(videoid, True)
+                except:
+                    image = None
+                if image and config.PRIVATE_BOT_MODE == str(True):
+                    stream = MediaStream(
+                        file_path,
+                        image,
+                        audio_parameters=audio_stream_quality,
+                        video_flags=MediaStream.IGNORE,
+                    )
+                else:
                     stream = MediaStream(
                         file_path,
                         audio_parameters=audio_stream_quality,
-                        video_parameters=video_stream_quality,
+                        video_flags=MediaStream.IGNORE,
                     )
-                else:
-                    try:
-                        image = await YouTube.thumbnail(videoid, True)
-                    except:
-                        image = None
-                    if image and config.PRIVATE_BOT_MODE == str(True):
-                        stream = MediaStream(
-                            file_path,
-                            image,
-                            audio_parameters=audio_stream_quality,
-                            video_parameters=video_stream_quality,
-                        )
-                    else:
-                        stream = MediaStream(
-                            file_path,
-                            audio_parameters=audio_stream_quality,
                         )
                 try:
                     await client.change_stream(chat_id, stream)
@@ -658,23 +654,26 @@ class Call(PyTgCalls):
                     except:
                         image = None
                 if video:
+                    # Sirf Telegram video file ke liye video stream
                     stream = MediaStream(
                         queued,
                         audio_parameters=audio_stream_quality,
                         video_parameters=video_stream_quality,
                     )
                 else:
+                    # YouTube / SoundCloud / audio — hamesha audio-only
                     if image and config.PRIVATE_BOT_MODE == str(True):
                         stream = MediaStream(
                             queued,
                             image,
                             audio_parameters=audio_stream_quality,
-                            video_parameters=video_stream_quality,
+                            video_flags=MediaStream.IGNORE,
                         )
                     else:
                         stream = MediaStream(
                             queued,
                             audio_parameters=audio_stream_quality,
+                            video_flags=MediaStream.IGNORE,
                         )
                 try:
                     await client.change_stream(chat_id, stream)
