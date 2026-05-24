@@ -539,7 +539,6 @@ class Call(PyTgCalls):
                         audio_parameters=audio_stream_quality,
                         video_flags=MediaStream.IGNORE,
                     )
-                        )
                 try:
                     await client.change_stream(chat_id, stream)
                 except Exception:
@@ -593,7 +592,6 @@ class Call(PyTgCalls):
                         audio_parameters=audio_stream_quality,
                         video_flags=MediaStream.IGNORE,
                     )
-                        )
                 try:
                     await client.change_stream(chat_id, stream)
                 except Exception:
