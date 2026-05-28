@@ -242,11 +242,24 @@ async def update_(client, message, _):
         return await response.edit(_["heroku_14"])
     except InvalidGitRepositoryError:
         return await response.edit(_["heroku_15"])
-    to_exc = f"git fetch origin {config.UPSTREAM_BRANCH} &> /dev/null"
-    os.system(to_exc)
-    await asyncio.sleep(7)
+    try:
+        repo.remotes.origin.fetch(config.UPSTREAM_BRANCH)
+    except GitCommandError:
+        return await response.edit(
+            f"❌ Failed to fetch from remote. Check your `UPSTREAM_BRANCH` config — "
+            f"current value: `{config.UPSTREAM_BRANCH}`"
+        )
+    await asyncio.sleep(3)
     verification = ""
     REPO_ = repo.remotes.origin.url.split(".git")[0]
+    try:
+        repo.commit("HEAD")
+        repo.commit(f"origin/{config.UPSTREAM_BRANCH}")
+    except Exception:
+        return await response.edit(
+            f"❌ Could not resolve `HEAD..origin/{config.UPSTREAM_BRANCH}`.\n"
+            f"Make sure the branch `{config.UPSTREAM_BRANCH}` exists on the remote."
+        )
     for checks in repo.iter_commits(f"HEAD..origin/{config.UPSTREAM_BRANCH}"):
         verification = str(checks.count())
     if verification == "":
