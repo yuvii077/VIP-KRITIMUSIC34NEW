@@ -81,7 +81,7 @@ def aq_markup(_, chat_id):
         [
             InlineKeyboardButton(
                 text="๏ ᴍᴏʀᴇ ๏",
-                url="https://t.me/Nobita_Support",
+                url="https://t.me/+w00BnR_Z_rA5NTY1",
             ),
         ],
     ]
@@ -116,7 +116,7 @@ def queuemarkup(_, vidid, chat_id):
         [
             InlineKeyboardButton(
                 text="๏ ᴍᴏʀᴇ ๏",
-                url="https://t.me/Nobita_Support",
+                url="https://t.me/+w00BnR_Z_rA5NTY1",
             ),
         ],
     ]
