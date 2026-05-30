@@ -61,6 +61,20 @@ autoend = {}
 counter = {}
 AUTO_END_TIME = 1
 
+# Original song jaisi clean, enhanced audio quality ke liye FFmpeg filter chain
+# - equalizer: mid-range clarity boost (vocals + instruments sahi sunenge)
+# - loudnorm: volume normalization (consistent loudness, no sudden jumps)
+# - aecho: subtle stereo depth (0 nahi, sirf thoda sa natural space)
+# - dynaudnorm: dynamic range smooth karna (peaks compress, silence enhance)
+ORIGINAL_AUDIO_FILTER = (
+    "-af "
+    "equalizer=f=60:width_type=o:width=2:g=2,"      # Gentle bass warmth
+    "equalizer=f=3000:width_type=o:width=2:g=1.5,"  # Vocal presence
+    "equalizer=f=10000:width_type=o:width=2:g=1,"   # Air / brightness
+    "loudnorm=I=-16:TP=-1.5:LRA=11,"                # Loudness normalize
+    "dynaudnorm=p=0.9:m=100:s=12"                   # Dynamic smoothing
+)
+
 
 async def _st_(chat_id):
     db[chat_id] = []
@@ -220,12 +234,14 @@ class Call(PyTgCalls):
                     image,
                     audio_parameters=audio_stream_quality,
                     video_flags=MediaStream.IGNORE,
+                    ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                 )
             else:
                 stream = MediaStream(
                     link,
                     audio_parameters=audio_stream_quality,
                     video_flags=MediaStream.IGNORE,
+                    ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                 )
         await assistant.change_stream(
             chat_id,
@@ -247,7 +263,7 @@ class Call(PyTgCalls):
             else MediaStream(
                 file_path,
                 audio_parameters=audio_stream_quality,
-                ffmpeg_parameters=f"-ss {to_seek} -to {duration}",
+                ffmpeg_parameters=f"-ss {to_seek} -to {duration} " + ORIGINAL_AUDIO_FILTER,
                 video_flags=MediaStream.IGNORE,
             )
         )
@@ -418,12 +434,14 @@ class Call(PyTgCalls):
                     image,
                     audio_parameters=audio_stream_quality,
                     video_flags=MediaStream.IGNORE,
+                    ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                 )
             else:
                 stream = MediaStream(
                     link,
                     audio_parameters=audio_stream_quality,
                     video_flags=MediaStream.IGNORE,
+                    ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                 )
         try:
             await assistant.join_group_call(
@@ -532,12 +550,14 @@ class Call(PyTgCalls):
                         image,
                         audio_parameters=audio_stream_quality,
                         video_flags=MediaStream.IGNORE,
+                        ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                     )
                 else:
                     stream = MediaStream(
                         link,
                         audio_parameters=audio_stream_quality,
                         video_flags=MediaStream.IGNORE,
+                        ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                     )
                 try:
                     await client.change_stream(chat_id, stream)
@@ -585,12 +605,14 @@ class Call(PyTgCalls):
                         image,
                         audio_parameters=audio_stream_quality,
                         video_flags=MediaStream.IGNORE,
+                        ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                     )
                 else:
                     stream = MediaStream(
                         file_path,
                         audio_parameters=audio_stream_quality,
                         video_flags=MediaStream.IGNORE,
+                        ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                     )
                 try:
                     await client.change_stream(chat_id, stream)
@@ -623,7 +645,12 @@ class Call(PyTgCalls):
                         video_parameters=video_stream_quality,
                     )
                     if str(streamtype) == "video"
-                    else MediaStream(videoid, audio_parameters=audio_stream_quality)
+                    else MediaStream(
+                        videoid,
+                        audio_parameters=audio_stream_quality,
+                        ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
+                        video_flags=MediaStream.IGNORE,
+                    )
                 )
                 try:
                     await client.change_stream(chat_id, stream)
@@ -666,12 +693,14 @@ class Call(PyTgCalls):
                             image,
                             audio_parameters=audio_stream_quality,
                             video_flags=MediaStream.IGNORE,
+                            ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                         )
                     else:
                         stream = MediaStream(
                             queued,
                             audio_parameters=audio_stream_quality,
                             video_flags=MediaStream.IGNORE,
+                            ffmpeg_parameters=ORIGINAL_AUDIO_FILTER,
                         )
                 try:
                     await client.change_stream(chat_id, stream)
