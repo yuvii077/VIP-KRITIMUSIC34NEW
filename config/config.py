@@ -104,18 +104,18 @@ STRING5 = getenv("STRING_SESSION5", None)
 # ================================================================
 # 🖼️ VISUALS (Images)
 # ================================================================
-BASE_IMG = "https://envs.sh/BjZ.jpg"
+BASE_IMG = "https://files.catbox.moe/jwgzg8.jpg"
 
-START_IMG_URL = getenv("START_IMG_URL", "https://envs.sh/BjZ.jpg")
-PING_IMG_URL = getenv("PING_IMG_URL", "https://files.catbox.moe/0u9z8d.jpg")
+START_IMG_URL = getenv("START_IMG_URL", "https://files.catbox.moe/jwgzg8.jpg")
+PING_IMG_URL = getenv("PING_IMG_URL", "https://files.catbox.moe/hz0m33.jpg")
 PLAYLIST_IMG_URL = getenv("PLAYLIST_IMG_URL", "https://envs.sh/BjZ.jpg")
 GLOBAL_IMG_URL = getenv("GLOBAL_IMG_URL", "https://envs.sh/BjZ.jpg")
 STATS_IMG_URL = getenv("STATS_IMG_URL", "https://envs.sh/BjZ.jpg")
 TELEGRAM_AUDIO_URL = getenv("TELEGRAM_AUDIO_URL", "https://envs.sh/BjZ.jpg")
-TELEGRAM_VIDEO_URL = getenv("TELEGRAM_VIDEO_URL", "https://envs.sh/BjZ.jpg")
+TELEGRAM_VIDEO_URL = getenv("TELEGRAM_VIDEO_URL", "https://files.catbox.moe/hz0m33.jpg")
 STREAM_IMG_URL = getenv("STREAM_IMG_URL", "https://envs.sh/BjZ.jpg")
 SOUNCLOUD_IMG_URL = getenv("SOUNCLOUD_IMG_URL", "https://envs.sh/BjZ.jpg")
-YOUTUBE_IMG_URL = getenv("YOUTUBE_IMG_URL", "https://envs.sh/BjZ.jpg")
+YOUTUBE_IMG_URL = getenv("YOUTUBE_IMG_URL", "https://files.catbox.moe/bkrwud.jpg")
 SPOTIFY_ARTIST_IMG_URL = getenv("SPOTIFY_ARTIST_IMG_URL", "https://envs.sh/BjZ.jpg")
 SPOTIFY_ALBUM_IMG_URL = getenv("SPOTIFY_ALBUM_IMG_URL", "https://envs.sh/BjZ.jpg")
 SPOTIFY_PLAYLIST_IMG_URL = getenv("SPOTIFY_PLAYLIST_IMG_URL", "https://envs.sh/BjZ.jpg")
