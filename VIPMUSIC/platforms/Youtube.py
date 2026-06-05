@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 from typing import Union
 
@@ -8,8 +9,10 @@ from pyrogram.types import Message
 
 from VIPMUSIC.utils.database import is_on_off
 
+# ─── Logger setup ────────────────────────────────────────────────────────────
+LOGGER = logging.getLogger("YouTubeAPI")
+
 # ─── Invidious public instances — fallback order mein ────────────────────────
-# Agar pehla kaam na kare toh agla try hoga automatically
 INVIDIOUS_INSTANCES = [
     "https://inv.nadeko.net",
     "https://invidious.nerdvpn.de",
@@ -43,18 +46,31 @@ async def _api_get(path: str, params: dict = None) -> dict | list | None:
         url = f"{base}/api/v1/{path}"
         try:
             async with session.get(url, params=params) as resp:
+                LOGGER.debug("[Invidious] %s → HTTP %s", url, resp.status)
                 if resp.status == 200:
                     data = await resp.json(content_type=None)
-                    # Empty response check
                     if data:
+                        LOGGER.debug("[Invidious] SUCCESS: %s", base)
                         return data
-        except Exception:
-            continue
+                else:
+                    LOGGER.warning(
+                        "[Invidious] HTTP %s from %s | path=%s params=%s",
+                        resp.status, base, path, params,
+                    )
+        except asyncio.TimeoutError:
+            LOGGER.warning("[Invidious] TIMEOUT: %s | path=%s", base, path)
+        except aiohttp.ClientConnectorError as e:
+            LOGGER.warning("[Invidious] CONNECT ERROR: %s | %s", base, e)
+        except Exception as e:
+            LOGGER.warning("[Invidious] ERROR: %s | %s: %s", base, type(e).__name__, e)
+
+    LOGGER.error(
+        "[Invidious] ALL instances FAILED for path=%s params=%s", path, params
+    )
     return None
 
 
 def _seconds_to_mmss(seconds: int) -> str:
-    """Seconds ko H:MM:SS ya M:SS format mein convert karo."""
     m, s = divmod(int(seconds), 60)
     h, m = divmod(m, 60)
     if h:
@@ -63,7 +79,6 @@ def _seconds_to_mmss(seconds: int) -> str:
 
 
 def _best_thumbnail(thumbnails: list) -> str:
-    """videoThumbnails list se best quality URL lo."""
     if not thumbnails:
         return ""
     for q in ("maxresdefault", "sddefault", "high", "medium", "default"):
@@ -74,11 +89,6 @@ def _best_thumbnail(thumbnails: list) -> str:
 
 
 def _best_stream_url(data: dict, prefer_video: bool = False) -> str | None:
-    """
-    Invidious /videos/:id response se best stream URL nikalo.
-      prefer_video=False  -> best audio-only stream
-      prefer_video=True   -> best progressive video+audio stream (max 720p)
-    """
     if prefer_video:
         streams = data.get("formatStreams", [])
         for res in ("720p", "480p", "360p", "240p"):
@@ -100,7 +110,6 @@ def _best_stream_url(data: dict, prefer_video: bool = False) -> str | None:
 
 
 def _empty_track() -> dict:
-    """Guaranteed safe empty track dict — KeyError kabhi nahi aayega."""
     return {
         "title": "",
         "link": "",
@@ -118,13 +127,7 @@ class YouTubeAPI:
         self.listbase = "https://youtube.com/playlist?list="
         self.reg = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
-    # ─── Internal helpers ────────────────────────────────────────────────────
-
     def _extract_videoid(self, link: str) -> str | None:
-        """
-        YouTube URL se 11-char video ID nikalo.
-        Plain text query pe None return karo — caller search karega.
-        """
         match = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", link)
         return match.group(1) if match else None
 
@@ -134,38 +137,54 @@ class YouTubeAPI:
         return link.strip()
 
     async def _search_first(self, query: str) -> dict | None:
-        """Invidious search se pehla video result lo."""
+        LOGGER.info("[Search] query='%s'", query)
         results = await _api_get("search", {"q": query, "type": "video", "page": 1})
         if isinstance(results, list):
             for item in results:
                 if item.get("type") == "video":
+                    LOGGER.info(
+                        "[Search] Found: '%s' | id=%s",
+                        item.get("title"), item.get("videoId"),
+                    )
                     return item
+        LOGGER.error("[Search] No results for query='%s'", query)
         return None
 
     async def _get_video_data(self, link: str) -> tuple[dict | None, str]:
-        """
-        Link ya query se video data aur video ID return karo.
-        Pehle ID extract karo, nahi toh search karo.
-        Returns: (data_dict, video_id_str)
-        """
         link = self._clean_link(link)
         vid = self._extract_videoid(link)
+        LOGGER.info("[GetVideoData] link='%s' | extracted_id=%s", link, vid)
 
         data = None
         if vid:
+            LOGGER.info("[GetVideoData] Fetching video info for id=%s", vid)
             data = await _api_get(f"videos/{vid}")
+            if not data:
+                LOGGER.warning("[GetVideoData] Direct video fetch failed for id=%s", vid)
 
         if not data:
-            # Plain text search ya fallback
+            LOGGER.info("[GetVideoData] Falling back to search for '%s'", link)
             search_result = await self._search_first(link)
             if not search_result:
+                LOGGER.error("[GetVideoData] Search also failed for '%s'", link)
                 return None, ""
             vid = search_result.get("videoId", "")
-            # Full video info lo — search result mein sab fields nahi hoti
+            LOGGER.info("[GetVideoData] Search gave id=%s, fetching full info...", vid)
             full = await _api_get(f"videos/{vid}")
-            data = full if full else search_result
+            if full:
+                data = full
+                LOGGER.info("[GetVideoData] Full video info fetched for id=%s", vid)
+            else:
+                LOGGER.warning(
+                    "[GetVideoData] Full fetch failed, using search result for id=%s", vid
+                )
+                data = search_result
 
         vid = vid or data.get("videoId", "")
+        LOGGER.info(
+            "[GetVideoData] Final: id=%s | title='%s'",
+            vid, data.get("title", "N/A"),
+        )
         return data, vid
 
     # ─── Public API methods ──────────────────────────────────────────────────
@@ -202,14 +221,17 @@ class YouTubeAPI:
     async def details(self, link: str, videoid: Union[bool, str] = None):
         if videoid:
             link = self.base + link
+        LOGGER.info("[details] link='%s'", link)
         data, vid = await self._get_video_data(link)
         if not data:
+            LOGGER.error("[details] FAILED for link='%s'", link)
             return None, None, None, None, None
-        title        = data.get("title", "")
-        length_sec   = int(data.get("lengthSeconds", 0))
-        duration_min = _seconds_to_mmss(length_sec)
-        thumbnail    = _best_thumbnail(data.get("videoThumbnails", []))
-        return title, duration_min, length_sec, thumbnail, vid
+        title      = data.get("title", "")
+        length_sec = int(data.get("lengthSeconds", 0))
+        dur_min    = _seconds_to_mmss(length_sec)
+        thumb      = _best_thumbnail(data.get("videoThumbnails", []))
+        LOGGER.info("[details] OK: title='%s' dur=%s", title, dur_min)
+        return title, dur_min, length_sec, thumb, vid
 
     async def title(self, link: str, videoid: Union[bool, str] = None):
         if videoid:
@@ -234,36 +256,37 @@ class YouTubeAPI:
         return _best_thumbnail(data.get("videoThumbnails", []))
 
     async def video(self, link: str, videoid: Union[bool, str] = None):
-        """
-        Direct stream URL return karo (video mode).
-        Returns: (1, url) on success | (0, error_str) on failure
-        """
         if videoid:
             link = self.base + link
-        data, _ = await self._get_video_data(link)
+        LOGGER.info("[video] link='%s'", link)
+        data, vid = await self._get_video_data(link)
         if not data:
+            LOGGER.error("[video] FAILED: no data for link='%s'", link)
             return 0, "Invidious se video info nahi mili"
         url = _best_stream_url(data, prefer_video=True)
         if url:
+            LOGGER.info("[video] Stream URL found for id=%s", vid)
             return 1, url
         if data.get("hlsUrl"):
+            LOGGER.info("[video] Using hlsUrl for id=%s", vid)
             return 1, data["hlsUrl"]
+        LOGGER.error("[video] No stream URL found for id=%s", vid)
         return 0, "Stream URL nahi mili"
 
     async def playlist(self, link: str, limit: int, user_id, videoid: Union[bool, str] = None):
-        """Playlist ke video IDs ki list return karo."""
         if videoid:
             link = self.listbase + link
         link = self._clean_link(link)
-
         match = re.search(r"list=([A-Za-z0-9_-]+)", link)
         plid = match.group(1) if match else link
+        LOGGER.info("[playlist] plid=%s limit=%s", plid, limit)
 
         video_ids = []
         page = 1
         while len(video_ids) < limit:
             data = await _api_get(f"playlists/{plid}", {"page": page})
             if not data or not data.get("videos"):
+                LOGGER.warning("[playlist] No videos on page=%s for plid=%s", page, plid)
                 break
             for v in data["videos"]:
                 if len(video_ids) >= limit:
@@ -275,50 +298,50 @@ class YouTubeAPI:
                 break
             page += 1
 
+        LOGGER.info("[playlist] Got %s video IDs for plid=%s", len(video_ids), plid)
         return video_ids
 
     async def track(self, link: str, videoid: Union[bool, str] = None):
-        """
-        Video ki track details dict return karo.
-        Returns: (track_details_dict, video_id)
-        Failure pe guaranteed safe dict return hoti hai — KeyError nahi aayega.
-        """
         if videoid:
             link = self.base + link
+        LOGGER.info("[track] link='%s'", link)
 
         data, vid = await self._get_video_data(link)
 
         if not data or not vid:
+            LOGGER.error("[track] FAILED: no data/vid for link='%s'", link)
             return _empty_track(), None
 
-        title        = data.get("title", "")
-        length_sec   = int(data.get("lengthSeconds", 0))
-        # duration_min = None means livestream (play.py ka `if details["duration_min"]:` check)
-        duration_min = _seconds_to_mmss(length_sec) if length_sec else None
-        thumbnail    = _best_thumbnail(data.get("videoThumbnails", []))
-        yturl        = f"https://www.youtube.com/watch?v={vid}"
+        title      = data.get("title", "")
+        length_sec = int(data.get("lengthSeconds", 0))
+        dur_min    = _seconds_to_mmss(length_sec) if length_sec else None
+        thumb      = _best_thumbnail(data.get("videoThumbnails", []))
+        yturl      = f"https://www.youtube.com/watch?v={vid}"
 
-        track_details = {
+        LOGGER.info(
+            "[track] OK: title='%s' | id=%s | dur=%s | thumb=%s",
+            title, vid, dur_min, bool(thumb),
+        )
+
+        return {
             "title":        title,
             "link":         yturl,
             "vidid":        vid,
-            "duration_min": duration_min,
+            "duration_min": dur_min,
             "duration_sec": length_sec,
-            "thumb":        thumbnail,
-        }
-        return track_details, vid
+            "thumb":        thumb,
+        }, vid
 
     async def formats(self, link: str, videoid: Union[bool, str] = None):
-        """Available stream formats return karo."""
         if videoid:
             link = self.base + link
+        LOGGER.info("[formats] link='%s'", link)
         data, vid = await self._get_video_data(link)
         if not data:
+            LOGGER.error("[formats] FAILED for link='%s'", link)
             return [], link
 
         formats_available = []
-
-        # Progressive streams (video + audio)
         for fmt in data.get("formatStreams", []):
             formats_available.append({
                 "format":      f"{fmt.get('qualityLabel', '')} ({fmt.get('container', '')})",
@@ -328,8 +351,6 @@ class YouTubeAPI:
                 "format_note": fmt.get("qualityLabel", ""),
                 "yturl":       fmt.get("url", ""),
             })
-
-        # Adaptive streams (separate audio / video)
         for fmt in data.get("adaptiveFormats", []):
             label = fmt.get("qualityLabel") or fmt.get("audioQuality") or ""
             if not label:
@@ -343,49 +364,54 @@ class YouTubeAPI:
                 "yturl":       fmt.get("url", ""),
             })
 
+        LOGGER.info("[formats] Found %s formats for id=%s", len(formats_available), vid)
         return formats_available, f"https://www.youtube.com/watch?v={vid}"
 
     async def slider(self, link: str, query_type: int, videoid: Union[bool, str] = None):
-        """Search results mein se query_type index wala result return karo."""
         if videoid:
             link = self.base + link
         link = self._clean_link(link)
+        LOGGER.info("[slider] query='%s' index=%s", link, query_type)
 
         results = await _api_get("search", {"q": link, "type": "video", "page": 1})
         videos  = [r for r in (results or []) if r.get("type") == "video"]
 
         if not videos or query_type >= len(videos):
+            LOGGER.error(
+                "[slider] Not enough results for query='%s' index=%s (got %s)",
+                link, query_type, len(videos),
+            )
             return None, None, None, None
 
-        item         = videos[query_type]
-        title        = item.get("title", "")
-        vid          = item.get("videoId", "")
-        length_sec   = int(item.get("lengthSeconds", 0))
-        duration_min = _seconds_to_mmss(length_sec)
-        thumbnail    = _best_thumbnail(item.get("videoThumbnails", []))
-        return title, duration_min, thumbnail, vid
+        item      = videos[query_type]
+        title     = item.get("title", "")
+        vid       = item.get("videoId", "")
+        dur_min   = _seconds_to_mmss(int(item.get("lengthSeconds", 0)))
+        thumb     = _best_thumbnail(item.get("videoThumbnails", []))
+        LOGGER.info("[slider] Result[%s]: '%s' id=%s", query_type, title, vid)
+        return title, dur_min, thumb, vid
 
     async def download(
         self,
         link: str,
         mystic,
-        video:      Union[bool, str] = None,
-        videoid:    Union[bool, str] = None,
-        songaudio:  Union[bool, str] = None,
-        songvideo:  Union[bool, str] = None,
-        format_id:  Union[bool, str] = None,
-        title:      Union[bool, str] = None,
+        video:     Union[bool, str] = None,
+        videoid:   Union[bool, str] = None,
+        songaudio: Union[bool, str] = None,
+        songvideo: Union[bool, str] = None,
+        format_id: Union[bool, str] = None,
+        title:     Union[bool, str] = None,
     ):
-        """
-        Invidious se direct stream URL return karo.
-        Physically download nahi karta — URL directly player ko deta hai.
-        Returns: (url_str, direct_bool) | (None, None) on failure
-        """
         if videoid:
             link = self.base + link
+        LOGGER.info(
+            "[download] link='%s' | video=%s songaudio=%s songvideo=%s format_id=%s",
+            link, video, songaudio, songvideo, format_id,
+        )
 
         data, vid = await self._get_video_data(link)
         if not data:
+            LOGGER.error("[download] FAILED: no data for link='%s'", link)
             return None, None
 
         all_formats = data.get("adaptiveFormats", []) + data.get("formatStreams", [])
@@ -394,25 +420,28 @@ class YouTubeAPI:
             if format_id:
                 for fmt in all_formats:
                     if str(fmt.get("itag")) == str(format_id):
+                        LOGGER.info("[download] songvideo: found itag=%s", format_id)
                         return fmt["url"], True
-            url = _best_stream_url(data, prefer_video=True)
-            if not url:
-                url = data.get("hlsUrl")
+            url = _best_stream_url(data, prefer_video=True) or data.get("hlsUrl")
+            LOGGER.info("[download] songvideo fallback url=%s", bool(url))
             return url, True
 
         elif songaudio:
             if format_id:
                 for fmt in data.get("adaptiveFormats", []):
                     if str(fmt.get("itag")) == str(format_id):
+                        LOGGER.info("[download] songaudio: found itag=%s", format_id)
                         return fmt["url"], True
-            return _best_stream_url(data, prefer_video=False), True
+            url = _best_stream_url(data, prefer_video=False)
+            LOGGER.info("[download] songaudio best_audio url=%s", bool(url))
+            return url, True
 
         elif video:
-            url = _best_stream_url(data, prefer_video=True)
-            if not url:
-                url = data.get("hlsUrl")
+            url = _best_stream_url(data, prefer_video=True) or data.get("hlsUrl")
+            LOGGER.info("[download] video mode url=%s", bool(url))
             return url, None
 
         else:
-            # Default: audio only
-            return _best_stream_url(data, prefer_video=False), True
+            url = _best_stream_url(data, prefer_video=False)
+            LOGGER.info("[download] audio-only url=%s", bool(url))
+            return url, True
