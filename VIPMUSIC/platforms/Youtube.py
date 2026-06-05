@@ -14,11 +14,11 @@ LOGGER = logging.getLogger("YouTubeAPI")
 
 # ─── Invidious public instances — fallback order mein ────────────────────────
 INVIDIOUS_INSTANCES = [
+    "https://invidious.f5.si",        # primary — working ✓
     "https://inv.nadeko.net",
-    "https://invidious.nerdvpn.de",
     "https://invidious.privacyredirect.com",
-    "https://iv.datura.network",
     "https://invidious.einfachzocken.eu",
+    "https://iv.datura.network",
     "https://invidious.fdn.fr",
 ]
 # ─────────────────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ def _seconds_to_mmss(seconds: int) -> str:
 def _best_thumbnail(thumbnails: list) -> str:
     if not thumbnails:
         return ""
-    for q in ("maxresdefault", "sddefault", "high", "medium", "default"):
+    for q in ("maxres", "maxresdefault", "sddefault", "high", "medium", "default", "start", "middle", "end"):
         for t in thumbnails:
             if t.get("quality") == q:
                 return t.get("url", "")
@@ -104,7 +104,7 @@ def _best_stream_url(data: dict, prefer_video: bool = False) -> str | None:
             if s.get("audioQuality") and not s.get("resolution")
         ]
         if audio_streams:
-            best = max(audio_streams, key=lambda s: int(s.get("bitrate", 0)))
+            best = max(audio_streams, key=lambda s: int(s.get("bitrate") or 0))
             return best.get("url")
     return None
 
@@ -138,7 +138,7 @@ class YouTubeAPI:
 
     async def _search_first(self, query: str) -> dict | None:
         LOGGER.info("[Search] query='%s'", query)
-        results = await _api_get("search", {"q": query, "type": "video", "page": 1})
+        results = await _api_get("search", {"q": query, "type": "video", "page": 1, "region": "IN"})
         if isinstance(results, list):
             for item in results:
                 if item.get("type") == "video":
@@ -373,7 +373,7 @@ class YouTubeAPI:
         link = self._clean_link(link)
         LOGGER.info("[slider] query='%s' index=%s", link, query_type)
 
-        results = await _api_get("search", {"q": link, "type": "video", "page": 1})
+        results = await _api_get("search", {"q": link, "type": "video", "page": 1, "region": "IN"})
         videos  = [r for r in (results or []) if r.get("type") == "video"]
 
         if not videos or query_type >= len(videos):
