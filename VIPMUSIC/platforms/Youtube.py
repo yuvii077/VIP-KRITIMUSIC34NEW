@@ -20,6 +20,7 @@ class SensitiveDataFilter(logging.Filter):
         patterns = [
             r"\d{8,10}:[a-zA-Z0-9_-]{35,}",  # Telegram bot token
             r"mongodb\+srv://\S+",             # MongoDB URI
+            r"xbit_[a-zA-Z0-9_-]+",            # API key
         ]
         for pattern in patterns:
             msg = re.sub(pattern, "[PROTECTED]", msg)
@@ -29,7 +30,8 @@ class SensitiveDataFilter(logging.Filter):
 logging.getLogger().addFilter(SensitiveDataFilter())
 
 # ─── VIP-MUSIC API CONFIG ─────────────────────────────────────────────────────
-API_BASE = "https://video-search-engine--shivam433533.replit.app/"
+API_BASE = "https://tgapi.xbitcode.com"
+API_KEY = "xbit_QuWntW2N_YmM2lSa2k2MRk3s-k0ONA-0"
 
 HEADERS = {
     "User-Agent": (
@@ -38,6 +40,7 @@ HEADERS = {
         "Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json",
+    "Authorization": f"Bearer {API_KEY}",
 }
 
 # ─── DURATION PARSER ──────────────────────────────────────────────────────────
@@ -76,26 +79,19 @@ def get_clean_id(link: str) -> Optional[str]:
         return None
     link = link.strip()
 
-    # Standard watch URL
     if "v=" in link:
         video_id = link.split("v=")[-1].split("&")[0]
-    # Shortened URL
     elif "youtu.be/" in link:
         video_id = link.split("youtu.be/")[-1].split("?")[0]
-    # Embed URL
     elif "youtube.com/embed/" in link:
         video_id = link.split("youtube.com/embed/")[-1].split("?")[0]
-    # Shorts URL
     elif "youtube.com/shorts/" in link:
         video_id = link.split("youtube.com/shorts/")[-1].split("?")[0]
     else:
-        # Already a raw ID
         video_id = link
 
-    # Sirf valid characters rakhein
     clean_id = re.sub(r"[^a-zA-Z0-9_-]", "", video_id)
 
-    # YouTube video IDs usually 11 characters hote hain, 5-15 safe range
     return clean_id if 5 <= len(clean_id) <= 15 else None
 
 
@@ -137,15 +133,7 @@ async def api_get(endpoint: str, params: dict = None) -> Optional[dict]:
 async def get_audio_stream_url(video_id: str) -> Optional[str]:
     """
     Diye gaye video_id ke liye sirf AUDIO stream URL fetch karta hai.
-
-    Strategy:
-      1. type=audio parameter ke saath API try karo
-      2. Agar nahi mila, bina type ke try karo (compatibility fallback)
-      3. Dono mein "audio", "stream", "url" keys check karo
-
-    Returns: stream URL string, ya None agar nahi mila.
     """
-    # --- Attempt 1: Audio-specific request ---
     data = await api_get("api/yt/stream", {"id": video_id, "type": "audio"})
     if data:
         stream = (
@@ -161,7 +149,6 @@ async def get_audio_stream_url(video_id: str) -> Optional[str]:
             )
             return stream
 
-    # --- Attempt 2: Generic stream (fallback) ---
     LOGGER(__name__).debug(
         f"[AUDIO] Audio type nahi mila, generic stream try kar raha hoon: {video_id}"
     )
@@ -187,7 +174,6 @@ async def get_audio_stream_url(video_id: str) -> Optional[str]:
 async def search_api(query: str, limit: int = 1) -> List[dict]:
     """
     API se YouTube search results fetch karta hai.
-    Returns list of result dicts, ya empty list on failure.
     """
     data = await api_get("api/yt/search", {"q": query, "max": limit})
     if data and isinstance(data.get("results"), list):
@@ -206,17 +192,10 @@ class YouTubeAPI:
         self.base = "https://www.youtube.com/watch?v="
         self.regex = r"(?:youtube\.com|youtu\.be)"
 
-    # ── Link Detection ────────────────────────────────────────────────────────
     async def exists(self, link: str) -> bool:
-        """Check karta hai ki diya gaya link YouTube URL hai ya nahi."""
         return bool(re.search(self.regex, link))
 
-    # ── URL Extractor ─────────────────────────────────────────────────────────
     async def url(self, message: Message) -> Optional[str]:
-        """
-        Message ya uske reply se YouTube URL dhundh ke return karta hai.
-        Pehle entities check karta hai, phir regex se.
-        """
         messages = [message, message.reply_to_message]
         for msg in messages:
             if not msg:
@@ -224,44 +203,27 @@ class YouTubeAPI:
             text = msg.text or msg.caption
             if not text:
                 continue
-            # Pyrogram entities se URL nikalo
             if msg.entities:
                 for entity in msg.entities:
                     if entity.type == MessageEntityType.URL:
                         url_text = text[entity.offset: entity.offset + entity.length]
                         if re.search(self.regex, url_text):
                             return url_text
-            # Regex fallback
             urls = re.findall(r"(https?://\S+)", text)
             for u in urls:
                 if re.search(self.regex, u):
                     return u
         return None
 
-    # ── Track Details ─────────────────────────────────────────────────────────
     async def details(
         self, query: str, videoid: Union[bool, str] = None
     ) -> Optional[Tuple[str, str, int, str, str]]:
-        """
-        Query ya video ID ke liye track details fetch karta hai.
-
-        Returns:
-            (title, duration_str, duration_sec, thumbnail_url, video_id)
-            ya None agar kuch nahi mila.
-
-        Strategy:
-            1. Agar videoid flag/value diya hai → direct stream API call
-            2. Agar query YouTube URL hai → ID extract karke stream API call
-            3. Text query → search API
-            4. Last resort → youtubesearchpython library
-        """
         LOGGER(__name__).debug(
             f"[DETAILS] query={query!r} | videoid={videoid!r}"
         )
 
         video_id = None
 
-        # Determine video ID from input
         if videoid:
             video_id = get_clean_id(query) or query.strip()
         elif await self.exists(query):
@@ -269,7 +231,6 @@ class YouTubeAPI:
 
         LOGGER(__name__).debug(f"[DETAILS] Resolved video_id={video_id!r}")
 
-        # --- Path 1: Direct video ID → stream API ---
         if video_id:
             stream_data = await api_get("api/yt/stream", {"id": video_id})
             LOGGER(__name__).debug(f"[DETAILS] stream_data={stream_data}")
@@ -282,7 +243,6 @@ class YouTubeAPI:
                 title = stream_data.get("title") or "Unknown Title"
                 thumb = stream_data.get("thumb") or YOUTUBE_IMG_URL
 
-                # Duration ko search results se try karo (stream API mein nahi hoti)
                 dur_str, dur_sec = "00:00", 0
                 if stream_data.get("duration"):
                     dur_str, dur_sec = parse_duration(stream_data["duration"])
@@ -298,7 +258,6 @@ class YouTubeAPI:
                 )
                 return title, dur_str, dur_sec, thumb, video_id
 
-        # --- Path 2: Text search via API ---
         LOGGER(__name__).debug(
             f"[DETAILS] Search API try kar raha hoon: {query!r}"
         )
@@ -317,7 +276,6 @@ class YouTubeAPI:
             )
             return title, dur_str, dur_sec, thumb, vid_id
 
-        # --- Path 3: youtubesearchpython fallback ---
         LOGGER(__name__).debug(
             f"[DETAILS] youtubesearchpython fallback try kar raha hoon"
         )
@@ -345,16 +303,9 @@ class YouTubeAPI:
         )
         return None
 
-    # ── Track Dict ────────────────────────────────────────────────────────────
     async def track(
         self, query: str, videoid: Union[bool, str] = None
     ) -> Tuple[Optional[dict], Optional[str]]:
-        """
-        Track ka complete dictionary return karta hai jo music player use karta hai.
-
-        Returns:
-            (track_details_dict, video_id) ya (None, None) on failure.
-        """
         det = await self.details(query, videoid)
         if not det:
             LOGGER(__name__).warning(
@@ -378,7 +329,6 @@ class YouTubeAPI:
         )
         return track_details, vid_id
 
-    # ── Audio Stream Download ─────────────────────────────────────────────────
     async def download(
         self,
         link: str,
@@ -387,21 +337,6 @@ class YouTubeAPI:
         videoid: Union[bool, str] = None,
         **kwargs,
     ) -> Tuple[Optional[str], bool]:
-        """
-        Sirf AUDIO stream URL return karta hai — koi file download nahi hoti.
-
-        Parameters:
-            link     : YouTube URL ya video ID
-            mystic   : Pyrogram message object (optional, unused)
-            video    : Ignored — hamesha audio stream dega
-            videoid  : True hone par 'link' ko seedha ID treat karta hai
-            **kwargs : Extra params ignore ho jaate hain
-
-        Returns:
-            (stream_url: str, True)  → success
-            (None, False)            → failure
-        """
-        # Video ID resolve karo
         if videoid:
             video_id = get_clean_id(link) or link.strip()
         else:
@@ -417,7 +352,6 @@ class YouTubeAPI:
             f"[DOWNLOAD] Audio stream fetch kar raha hoon: {video_id}"
         )
 
-        # Audio-only stream URL fetch karo
         stream_url = await get_audio_stream_url(video_id)
 
         if stream_url:
